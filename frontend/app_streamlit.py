@@ -89,7 +89,10 @@ def write_cloud_prediction_log(row_data: list):
         return False
     try:
         sheet = client.open(SPREADSHEET_NAME).worksheet(WORKSHEET_NAME)
-        sheet.append_row(row_data)
+        # 🟢 CRITICAL SAFETY FIX: Explicitly serialize elements to pure strings 
+        # This strips custom Python objects and fixes the empty spreadsheet bug!
+        clean_row = [str(item) if item is not None else "" for item in row_data]
+        sheet.append_row(clean_row)
         logging.info("✓ Log record written successfully to Google Sheet row matrix.")
         return True
     except Exception as e:
@@ -226,15 +229,19 @@ if app_view == "🔮 Route Risk Checker":
                     st.caption(res_data.get("destination_description"))
                     st.write("")
                     
-                    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-                    with m_col1:
-                        st.metric(label="⛰️ Altitude", value=f"{float(telemetry.get('elevation', 0)):.0f}m")
-                    with m_col2:
-                        st.metric(label="🌡️ Temp", value=f"{float(telemetry.get('temp_max', 0)):.1f}°C")
-                    with m_col3:
-                        st.metric(label="🌧️ Rainfall", value=f"{float(telemetry.get('rain', 0)):.2f}mm")
-                    with m_col4:
-                        st.metric(label="💨 Wind Speed", value=f"{float(telemetry.get('wind_speed', 0)):.1f}km/h")
+                    # 🟢 UI FIXED: Pivoted layout to a roomy 2x2 grid so values never clip with '...' 
+                    m_row1_col1, m_row1_col2 = st.columns(2)
+                    with m_row1_col1:
+                        st.metric(label="⛰️ Altitude Height", value=f"{float(telemetry.get('elevation', 0)):,.0f} meters")
+                    with m_row1_col2:
+                        st.metric(label="🌡️ Expected Temperature", value=f"{float(telemetry.get('temp_max', 0)):.1f} °C")
+                        
+                    st.write("")
+                    m_row2_col1, m_row2_col2 = st.columns(2)
+                    with m_row2_col1:
+                        st.metric(label="🌧️ Predicted Rainfall", value=f"{float(telemetry.get('rain', 0)):.2f} mm")
+                    with m_row2_col2:
+                        st.metric(label="💨 Estimated Wind Speed", value=f"{float(telemetry.get('wind_speed', 0)):.1f} km/h")
 
                 with col_advisory:
                     try:
