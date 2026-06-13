@@ -6,9 +6,6 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-# 🟢 THE BRIDGE: Ingest your storage entry workflow straight from your module folder
-from store_user_quer.store import entry_store
-
 router = APIRouter()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -26,9 +23,7 @@ try:
         with open(SCHEMA_PATH, "rb") as s_file:
             feature_schema = pickle.load(s_file)
         model_loaded = True
-        logging.info("✓ Machine Learning Core weights successfully loaded into memory!")
-    else:
-        logging.warning("⚠ Model binary files missing from paths.")
+        logging.info("✓ Machine Learning weights successfully verified in memory.")
 except Exception as e:
     logging.error(f"🛑 Error loading model files: {e}")
     model_loaded = False
@@ -52,7 +47,6 @@ async def health_check():
 
 @router.post("/predict")
 async def predict_route_risk(payload: RoutePredictionRequest):
-    """Processes transit queries, scores them via ML, and automatically triggers cloud persistence hooks."""
     if not model_loaded:
         raise HTTPException(status_code=503, detail="ML Core engine binaries unavailable.")
     
@@ -60,7 +54,6 @@ async def predict_route_risk(payload: RoutePredictionRequest):
         resolved_name = payload.location_query.strip().capitalize()
         target_date_str = payload.target_date.strip()
         
-        # Ingest dynamic target parameters into our computational seed arrays
         seed_string = f"{resolved_name}_{target_date_str}"
         seed_value = sum(ord(char) for char in seed_string)
         np.random.seed(seed_value)
@@ -103,8 +96,7 @@ async def predict_route_risk(payload: RoutePredictionRequest):
         else:
             risk_category = "Critical Hazard 🚨"
             
-        # Build comprehensive output log record
-        response_payload = {
+        return {
             "status": "SUCCESS",
             "resolved_name": resolved_name,
             "destination_type": "🏖️ Coastal Zone" if elevation < 300 else "⛰️ High-Altitude Mountain Pass",
@@ -117,15 +109,5 @@ async def predict_route_risk(payload: RoutePredictionRequest):
             "forecast_date": target_date_str,
             "processed_features": raw_features
         }
-
-        # 🟢 THE FIX: Pass calculations directly to your entry_store function to append rows across all columns!
-        try:
-            entry_store(response_payload, payload.location_query)
-            logging.info("✓ Backend Engine cleanly completed transaction storage sequence.")
-        except Exception as db_err:
-            logging.error(f"⚠️ Storage engine exception intercepted: {db_err}")
-
-        return response_payload
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Pipeline processing error logs: {str(e)}")

@@ -85,15 +85,46 @@ def fetch_cloud_prediction_logs():
 
 def write_cloud_prediction_log(row_data: list):
     """Safely pushes an array row down into your designated Google Sheet columns layout."""
+    import json
     client = get_gspread_client()
     if not client:
         return False
     try:
         sheet = client.open(SPREADSHEET_NAME).worksheet(WORKSHEET_NAME)
-        # Convert values explicitly to standard string payloads to satisfy Google API requirements
-        string_clean_payload = [str(cell) if cell is not None else "" for cell in row_data]
-        sheet.append_row(string_clean_payload)
-        logging.info("✓ Log record written successfully to Google Sheet row matrix.")
+        
+        # 🟢 THE DISCOVERY FIX: Unpack the frontend list and map it to your exact 13 columns (A to M)
+        timestamp = row_data[0]
+        location_query = row_data[1]
+        resolved_name = row_data[2]
+        latitude = row_data[3]
+        longitude = row_data[4]
+        predicted_hazard_score = row_data[5]
+        risk_category = row_data[6]
+        destination_type = row_data[7]
+        destination_description = row_data[8]
+        model_version = row_data[9]
+        forecast_date = row_data[10]
+        processed_features_dict = row_data[11]
+
+        # Assemble the row array with your column M status flag included
+        synchronized_payload = [
+            str(timestamp),
+            str(location_query),
+            str(resolved_name),
+            float(latitude or 0.0),
+            float(longitude or 0.0),
+            float(predicted_hazard_score or 0.0),
+            str(risk_category),
+            str(destination_type),
+            str(destination_description),
+            str(model_version),
+            str(forecast_date),
+            json.dumps(processed_features_dict), # Clean stringified JSON dictionary
+            "SUCCESS"                            # Column M
+        ]
+        
+        sheet.append_row(synchronized_payload)
+        logging.info("✓ Live log row written successfully to Google Sheet matrix.")
         return True
     except Exception as e:
         logging.error(f"🛑 Failed to append row log to Google Sheets: {e}")
