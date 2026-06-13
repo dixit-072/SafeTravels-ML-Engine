@@ -86,12 +86,15 @@ def write_cloud_prediction_log(row_data: list):
     """Safely pushes an array row down into your designated Google Sheet columns layout."""
     client = get_gspread_client()
     if not client:
+        logging.warning("Database sync skipped: GSpread client completely unavailable.")
         return False
     try:
         sheet = client.open(SPREADSHEET_NAME).worksheet(WORKSHEET_NAME)
-        # 🟢 PURE STRING TYPECAST FIX: Converts all datatypes into pure web strings
-        # This completely strips native Python objects and forces rows to append properly!
+        
+        # 🟢 THE FIX: Convert every element in the list into a pure string!
+        # This safely stringifies datetime objects, dicts, and floats so Google API accepts it perfectly.
         string_clean_payload = [str(cell) if cell is not None else "" for cell in row_data]
+        
         sheet.append_row(string_clean_payload)
         logging.info("✓ Log record written successfully to Google Sheet row matrix.")
         return True
