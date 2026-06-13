@@ -1,10 +1,14 @@
 import os
 import pickle
 import logging
+import json
 import pandas as pd
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+
+# 🟢 IMPORT YOUR ENGINE: Bring in your storage system right here!
+from store_user_quer.store import GoogleSheetsDatabase
 
 router = APIRouter()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -16,7 +20,6 @@ model = None
 feature_schema = None
 model_loaded = False
 
-# Safe loading execution block wrapper
 try:
     if os.path.exists(MODEL_PATH) and os.path.exists(SCHEMA_PATH):
         with open(MODEL_PATH, "rb") as m_file:
@@ -40,7 +43,6 @@ class RoutePredictionRequest(BaseModel):
 
 @router.get("/health")
 async def health_check():
-    """System health checkpoint verification node for Streamlit connection tracking."""
     return {
         "status": "healthy",
         "service": "inference_engine_core",
@@ -51,7 +53,6 @@ async def health_check():
 
 @router.post("/predict")
 async def predict_route_risk(payload: RoutePredictionRequest):
-    """Processes incoming transit queries, feeds feature tables to ML models, and outputs hazard indices."""
     if not model_loaded:
         raise HTTPException(status_code=503, detail="ML Core engine binaries unavailable.")
     
@@ -59,20 +60,17 @@ async def predict_route_risk(payload: RoutePredictionRequest):
         resolved_name = payload.location_query.strip().capitalize()
         target_date_str = payload.target_date.strip()
         
-        # 🟢 THE DYNAMIC UPGRADE: Combine location text AND date string into the random seed base.
-        # This breaks the static seed bug, forcing unique weather variables per calendar day!
+        # Incorporate dynamic target date string vectors into our numpy calculations seed
         seed_string = f"{resolved_name}_{target_date_str}"
         seed_value = sum(ord(char) for char in seed_string)
         np.random.seed(seed_value)
         
-        # Ingest parameters using our unique dynamic seed baseline vectors
         elevation = 25.0 if "Goa" in resolved_name else float(np.random.randint(500, 2800))
         rain = float(np.random.uniform(0.0, 15.0))
         wind_speed = float(np.random.uniform(5.0, 35.0))
         temp_max = float(np.random.uniform(24.0, 35.0)) if "Goa" in resolved_name else float(np.random.uniform(-5.0, 18.0))
         elevation_penalty = 0.0 if elevation < 1000 else (elevation - 1000) * 0.02
         
-        # Build raw feature dictionary matching your training data structural format
         raw_features = {
             "elevation": elevation,
             "rain": rain,
@@ -84,19 +82,16 @@ async def predict_route_risk(payload: RoutePredictionRequest):
             "festival_boost": float(np.random.choice([0.0, 5.0, 15.0]))
         }
         
-        # Structure data array rows to match the experimental schema matrix exactly
         input_df = pd.DataFrame([raw_features])
         if feature_schema is not None:
             input_df = input_df.reindex(columns=feature_schema, fill_value=0.0)
         
-        # Run live model math estimation algorithms
         if hasattr(model, "predict_proba"):
             prediction_score = model.predict_proba(input_df)[0][1] * 100
         else:
             prediction_score = model.predict(input_df)[0]
             prediction_score = max(0.0, min(100.0, float(prediction_score)))
         
-        # Determine Categorical Safety Status Titles
         if prediction_score < 25:
             risk_category = "Minimal Risk 🟢"
         elif prediction_score < 45:
@@ -108,18 +103,29 @@ async def predict_route_risk(payload: RoutePredictionRequest):
         else:
             risk_category = "Critical Hazard 🚨"
             
-        return {
+        # 👑 COMPILE RESPONSE DATA
+        response_payload = {
             "status": "SUCCESS",
             "resolved_name": resolved_name,
             "destination_type": "🏖️ Coastal Zone" if elevation < 300 else "⛰️ High-Altitude Mountain Pass",
             "destination_description": f"Live statistical analysis node executing calculations for {resolved_name}.",
             "latitude": 15.2993 if "Goa" in resolved_name else (32.2396 if "Manali" in resolved_name else 10.0889),
-            "longitude": 74.1240 if "Goa" in resolved_name else (77.1887 if "Manali" in resolved_name else 77.0595),
+            "longitude": 74.1240 if "Goa" in resolved_name else (77.1887 if "Manali" in resolved_name else 74.1240),
             "predicted_hazard_score": round(float(prediction_score), 2),
             "risk_category": risk_category,
             "model_version": "2.1.0",
+            "forecast_date": target_date_str,
             "processed_features": raw_features
         }
+
+        # ☁️ EXECUTE BACKEND STORAGE WRITE ROUTINE DIRECTLY
+        try:
+            db = GoogleSheetsDatabase()
+            db.insert_prediction(response_payload, payload.location_query)
+        except Exception as db_err:
+            logging.error(f"⚠️ Background Sheet insertion log skip: {db_err}")
+
+        return response_payload
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Pipeline processing error logs: {str(e)}")
