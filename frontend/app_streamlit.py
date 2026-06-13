@@ -92,7 +92,7 @@ def write_cloud_prediction_log(row_data: list):
     try:
         sheet = client.open(SPREADSHEET_NAME).worksheet(WORKSHEET_NAME)
         
-        # 🟢 THE DISCOVERY FIX: Unpack the frontend list and map it to your exact 13 columns (A to M)
+        # Unpack the frontend list and map it to your exact 13 columns matching your store.py model
         timestamp = row_data[0]
         location_query = row_data[1]
         resolved_name = row_data[2]
@@ -106,7 +106,7 @@ def write_cloud_prediction_log(row_data: list):
         forecast_date = row_data[10]
         processed_features_dict = row_data[11]
 
-        # Assemble the row array with your column M status flag included
+        # 🟢 THE FIXED PAYLOAD: Explicitly match the 13 columns from A to M (including SUCCESS flag)
         synchronized_payload = [
             str(timestamp),
             str(location_query),
@@ -119,8 +119,8 @@ def write_cloud_prediction_log(row_data: list):
             str(destination_description),
             str(model_version),
             str(forecast_date),
-            json.dumps(processed_features_dict), # Clean stringified JSON dictionary
-            "SUCCESS"                            # Column M
+            json.dumps(processed_features_dict), # Stringified JSON features
+            "SUCCESS"                            # Column M: status
         ]
         
         sheet.append_row(synchronized_payload)
