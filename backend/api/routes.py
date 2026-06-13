@@ -1,14 +1,13 @@
 import os
 import pickle
 import logging
-import json
 import pandas as pd
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-# 🟢 IMPORT YOUR ENGINE: Bring in your storage system right here!
-from store_user_quer.store import GoogleSheetsDatabase
+# 🟢 THE BRIDGE: Ingest your storage entry workflow straight from your module folder
+from store_user_quer.store import entry_store
 
 router = APIRouter()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -53,6 +52,7 @@ async def health_check():
 
 @router.post("/predict")
 async def predict_route_risk(payload: RoutePredictionRequest):
+    """Processes transit queries, scores them via ML, and automatically triggers cloud persistence hooks."""
     if not model_loaded:
         raise HTTPException(status_code=503, detail="ML Core engine binaries unavailable.")
     
@@ -60,7 +60,7 @@ async def predict_route_risk(payload: RoutePredictionRequest):
         resolved_name = payload.location_query.strip().capitalize()
         target_date_str = payload.target_date.strip()
         
-        # Incorporate dynamic target date string vectors into our numpy calculations seed
+        # Ingest dynamic target parameters into our computational seed arrays
         seed_string = f"{resolved_name}_{target_date_str}"
         seed_value = sum(ord(char) for char in seed_string)
         np.random.seed(seed_value)
@@ -103,14 +103,14 @@ async def predict_route_risk(payload: RoutePredictionRequest):
         else:
             risk_category = "Critical Hazard 🚨"
             
-        # 👑 COMPILE RESPONSE DATA
+        # Build comprehensive output log record
         response_payload = {
             "status": "SUCCESS",
             "resolved_name": resolved_name,
             "destination_type": "🏖️ Coastal Zone" if elevation < 300 else "⛰️ High-Altitude Mountain Pass",
             "destination_description": f"Live statistical analysis node executing calculations for {resolved_name}.",
             "latitude": 15.2993 if "Goa" in resolved_name else (32.2396 if "Manali" in resolved_name else 10.0889),
-            "longitude": 74.1240 if "Goa" in resolved_name else (77.1887 if "Manali" in resolved_name else 74.1240),
+            "longitude": 74.1240 if "Goa" in resolved_name else (77.1887 if "Manali" in resolved_name else 77.0595),
             "predicted_hazard_score": round(float(prediction_score), 2),
             "risk_category": risk_category,
             "model_version": "2.1.0",
@@ -118,12 +118,12 @@ async def predict_route_risk(payload: RoutePredictionRequest):
             "processed_features": raw_features
         }
 
-        # ☁️ EXECUTE BACKEND STORAGE WRITE ROUTINE DIRECTLY
+        # 🟢 THE FIX: Pass calculations directly to your entry_store function to append rows across all columns!
         try:
-            db = GoogleSheetsDatabase()
-            db.insert_prediction(response_payload, payload.location_query)
+            entry_store(response_payload, payload.location_query)
+            logging.info("✓ Backend Engine cleanly completed transaction storage sequence.")
         except Exception as db_err:
-            logging.error(f"⚠️ Background Sheet insertion log skip: {db_err}")
+            logging.error(f"⚠️ Storage engine exception intercepted: {db_err}")
 
         return response_payload
         
