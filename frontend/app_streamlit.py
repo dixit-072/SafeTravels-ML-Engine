@@ -114,7 +114,7 @@ if app_view == "🔮 Route Risk Checker":
     st.markdown("### Smart Weather & Terrain Analysis System")
     st.write("---")
 
-    col_inputs, col_advisory = st.columns([1, 1], gap="large")
+    col_inputs, col_advisory = st.columns([1.2, 1], gap="large")
 
     with col_inputs:
         st.header("🧳 Plan Your Trip")
@@ -209,13 +209,16 @@ if app_view == "🔮 Route Risk Checker":
                     st.caption(res_data.get("destination_description"))
                     st.write("")
                     
-                    m_col1, m_col2 = st.columns(2)
+                    # 🚀 Spread metrics across 4 columns to maximize horizontal space
+                    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
                     with m_col1:
-                        st.metric(label="⛰️ Altitude Height", value=f"{float(telemetry.get('elevation', 0)):.2f} meters")
-                        st.metric(label="🌡️ Expected Temperature", value=f"{float(telemetry.get('temp_max', 0)):.2f} °C")
+                        st.metric(label="⛰️ Altitude", value=f"{float(telemetry.get('elevation', 0)):.0f}m")
                     with m_col2:
-                        st.metric(label="🌧️ Predicted Rainfall", value=f"{float(telemetry.get('rain', 0)):.2f} mm")
-                        st.metric(label="💨 Estimated Wind Speed", value=f"{float(telemetry.get('wind_speed', 0)):.2f} km/h")
+                        st.metric(label="🌡️ Temp", value=f"{float(telemetry.get('temp_max', 0)):.1f}°C")
+                    with m_col3:
+                        st.metric(label="🌧️ Rainfall", value=f"{float(telemetry.get('rain', 0)):.2f}mm")
+                    with m_col4:
+                        st.metric(label="💨 Wind Speed", value=f"{float(telemetry.get('wind_speed', 0)):.1f}km/h")
 
                 with col_advisory:
                     try:
@@ -307,13 +310,11 @@ elif app_view == "📊 Travel Data Analytics":
     selected_analyst_city = "🌐 Show All Indian Cities Together"
     attribution_backup_path = "analysis/risk_attribution_dashboard.csv"
 
-    # 🌊 BACKUP DISK HYDRATION STRATEGY: Hydrates full graphs if Google Sheets returns empty or sleeps
     if db_df is None or db_df.empty:
         if os.path.exists(attribution_backup_path):
             st.info("📊 Hydrating metrics suite using master repository logs archive...")
             backup_raw = pd.read_csv(attribution_backup_path)
             
-            # Re-map schemas to align validation parameters seamlessly
             db_df = backup_raw.rename(
                 columns={
                     "location": "resolved_name", 
