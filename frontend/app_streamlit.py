@@ -5,6 +5,7 @@ import logging
 import os
 import numpy as np
 import gspread
+import json
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 from dotenv import load_dotenv
@@ -84,59 +85,20 @@ def fetch_cloud_prediction_logs():
 
 def write_cloud_prediction_log(row_data: list):
     """Safely pushes an array row down into your designated Google Sheet columns layout."""
-    # We bring your class connection architecture directly into the frontend utility loop
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    
-    # 📡 1. Authorize connection using your passive credentials manager
     client = get_gspread_client()
     if not client:
-        logging.warning("⚠ Database connection skipped: Credentials unavailable.")
         return False
-        
     try:
         sheet = client.open(SPREADSHEET_NAME).worksheet(WORKSHEET_NAME)
-        
-        # 📊 2. Map row variables exactly matching your store.py schema constraints [A through M]
-        # We parse the incoming row list array elements safely
-        timestamp = row_data[0]
-        location_query = row_data[1]
-        resolved_name = row_data[2] or "N/A"
-        latitude = float(row_data[3] or 0.0)
-        longitude = float(row_data[4] or 0.0)
-        predicted_hazard_score = float(row_data[5] or 0.0)
-        risk_category = row_data[6] or "Unassigned"
-        destination_type = row_data[7] or "General"
-        destination_description = row_data[8] or "N/A"
-        model_version = row_data[9] or "2.1.0"
-        forecast_date = row_data[10]
-        telemetry_dict = row_data[11]
-
-        # 🟢 THE FIX: Reassemble your exact row matrix array from store.py
-        # We explicitly wrap json.dumps() and string conversions to prevent API rejections
-        production_row_to_append = [
-            str(timestamp),
-            str(location_query),
-            str(resolved_name),
-            latitude,
-            longitude,
-            predicted_hazard_score,
-            str(risk_category),
-            str(destination_type),
-            str(destination_description),
-            str(model_version),
-            str(forecast_date),
-            json.dumps(telemetry_dict), # 👈 Matches your exact json formatting rule
-            "SUCCESS"                   # 👈 Column M status flag
-        ]
-        
-        # ☁️ Stream the synchronized dataset down to your spreadsheet cells grid
-        sheet.append_row(production_row_to_append)
-        logging.info("✓ Prediction successfully logged into Cloud Spreadsheet Row Matrix!")
+        # Convert values explicitly to standard string payloads to satisfy Google API requirements
+        string_clean_payload = [str(cell) if cell is not None else "" for cell in row_data]
+        sheet.append_row(string_clean_payload)
+        logging.info("✓ Log record written successfully to Google Sheet row matrix.")
         return True
-        
     except Exception as e:
-        logging.error(f"🛑 Google Cloud append transaction failed: {e}")
+        logging.error(f"🛑 Failed to append row log to Google Sheets: {e}")
         return False
+
 
 @st.cache_data
 def load_cached_destinations():
@@ -267,7 +229,7 @@ if app_view == "🔮 Route Risk Checker":
                     st.caption(res_data.get("destination_description"))
                     st.write("")
                     
-                    # 🟢 GRID RE-ARCHITECT FIX: Spreads metrics across a 2x2 grid block to guarantee full viewability
+                    # 🧼 Fixed 2x2 grid prevents values from truncating on low-res screens
                     m_r1_c1, m_r1_col2 = st.columns(2)
                     with m_r1_c1:
                         st.metric(label="⛰️ Altitude Height", value=f"{float(telemetry.get('elevation', 0)):,.0f} meters")
@@ -332,20 +294,21 @@ if app_view == "🔮 Route Risk Checker":
                     target_date_str = travel_date.strftime("%Y-%m-%d")
                     current_time_str = datetime.now().strftime("%I:%M:%S %p")
                     
-                    # Core API Row Append List 
+                    # 🟢 HARMONIZED PAYLOAD: Reassembled row entries to match your store.py script [Columns A through M]
                     sheet_row_payload = [
-                        current_timestamp,
-                        final_query,
-                        res_data.get("resolved_name"),
-                        float(lat_val),
-                        float(lon_val),
-                        round(float(score), 2),
-                        tier,
-                        res_data.get("destination_type"),
-                        res_data.get("destination_description"),
-                        res_data.get("model_version"),
-                        target_date_str,
-                        str(telemetry)
+                        current_timestamp,                                                       # A: timestamp
+                        final_query,                                                             # B: location_query
+                        res_data.get("resolved_name", "N/A"),                                    # C: resolved_name
+                        float(lat_val or 0.0),                                                   # D: latitude
+                        float(lon_val or 0.0),                                                   # E: longitude
+                        round(float(score or 0.0), 2),                                           # F: predicted_hazard_score
+                        tier,                                                                    # G: risk_category
+                        res_data.get("destination_type", "General"),                             # H: destination_type
+                        res_data.get("destination_description", "N/A"),                          # I: destination_description
+                        res_data.get("model_version", "2.1.0"),                                  # J: model_version
+                        target_date_str,                                                         # K: forecast_date
+                        json.dumps(telemetry),                                                   # L: processed_features
+                        "SUCCESS"                                                                # M: status flag
                     ]
                     write_cloud_prediction_log(sheet_row_payload)
 
@@ -390,6 +353,7 @@ elif app_view == "📊 Travel Data Analytics":
     selected_analyst_city = "🌐 Show All Indian Cities Together"
     attribution_backup_path = "analysis/risk_attribution_dashboard.csv"
 
+    # Fallback to local logs directory if your cloud sheet is clearing out formatting blocks
     if db_df is None or db_df.empty:
         if os.path.exists(attribution_backup_path):
             st.info("📊 Hydrating metrics suite using master repository logs archive...")
@@ -433,7 +397,7 @@ elif app_view == "📊 Travel Data Analytics":
 
         st.write("")
 
-        # 🟢 GRID LAYOUT SPLIT RE-CONFIGURATION: Breaks metrics row into a 2x2 grid matrix layout to resolve squished strings
+        # 🟢 GRID MATRIX FIX: Spreads layout metrics cleanly across 2x2 grid block to guarantee full viewability
         kpi_row1_col1, kpi_row1_col2 = st.columns(2)
         with kpi_row1_col1:
             st.metric(label="🔢 Total Safety Reports Generated", value=f"{len(display_df):,}")
