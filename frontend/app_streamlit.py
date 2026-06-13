@@ -89,10 +89,10 @@ def write_cloud_prediction_log(row_data: list):
         return False
     try:
         sheet = client.open(SPREADSHEET_NAME).worksheet(WORKSHEET_NAME)
-        # 🟢 CRITICAL SAFETY FIX: Explicitly serialize elements to pure strings 
-        # This strips custom Python objects and fixes the empty spreadsheet bug!
-        clean_row = [str(item) if item is not None else "" for item in row_data]
-        sheet.append_row(clean_row)
+        # 🟢 PURE STRING TYPECAST FIX: Converts all datatypes into pure web strings
+        # This completely strips native Python objects and forces rows to append properly!
+        string_clean_payload = [str(cell) if cell is not None else "" for cell in row_data]
+        sheet.append_row(string_clean_payload)
         logging.info("✓ Log record written successfully to Google Sheet row matrix.")
         return True
     except Exception as e:
@@ -229,18 +229,18 @@ if app_view == "🔮 Route Risk Checker":
                     st.caption(res_data.get("destination_description"))
                     st.write("")
                     
-                    # 🟢 UI FIXED: Pivoted layout to a roomy 2x2 grid so values never clip with '...' 
-                    m_row1_col1, m_row1_col2 = st.columns(2)
-                    with m_row1_col1:
+                    # 🟢 GRID RE-ARCHITECT FIX: Spreads metrics across a 2x2 grid block to guarantee full viewability
+                    m_r1_c1, m_r1_col2 = st.columns(2)
+                    with m_r1_c1:
                         st.metric(label="⛰️ Altitude Height", value=f"{float(telemetry.get('elevation', 0)):,.0f} meters")
-                    with m_row1_col2:
+                    with m_r1_col2:
                         st.metric(label="🌡️ Expected Temperature", value=f"{float(telemetry.get('temp_max', 0)):.1f} °C")
                         
                     st.write("")
-                    m_row2_col1, m_row2_col2 = st.columns(2)
-                    with m_row2_col1:
+                    m_r2_c1, m_r2_col2 = st.columns(2)
+                    with m_r2_c1:
                         st.metric(label="🌧️ Predicted Rainfall", value=f"{float(telemetry.get('rain', 0)):.2f} mm")
-                    with m_row2_col2:
+                    with m_r2_col2:
                         st.metric(label="💨 Estimated Wind Speed", value=f"{float(telemetry.get('wind_speed', 0)):.1f} km/h")
 
                 with col_advisory:
@@ -294,19 +294,20 @@ if app_view == "🔮 Route Risk Checker":
                     target_date_str = travel_date.strftime("%Y-%m-%d")
                     current_time_str = datetime.now().strftime("%I:%M:%S %p")
                     
+                    # Core API Row Append List 
                     sheet_row_payload = [
-                        current_timestamp,                          # A: timestamp
-                        final_query,                                # B: location_query
-                        res_data.get("resolved_name"),              # C: resolved_name
-                        float(lat_val),                             # D: latitude
-                        float(lon_val),                             # E: longitude
-                        round(float(score), 2),                     # F: predicted_hazard_score
-                        tier,                                       # G: risk_category
-                        res_data.get("destination_type"),           # H: destination_type
-                        res_data.get("destination_description"),    # I: destination_description
-                        res_data.get("model_version"),              # J: model_version
-                        target_date_str,                            # K: forecast_date
-                        str(telemetry)                              # L: processed_features
+                        current_timestamp,
+                        final_query,
+                        res_data.get("resolved_name"),
+                        float(lat_val),
+                        float(lon_val),
+                        round(float(score), 2),
+                        tier,
+                        res_data.get("destination_type"),
+                        res_data.get("destination_description"),
+                        res_data.get("model_version"),
+                        target_date_str,
+                        str(telemetry)
                     ]
                     write_cloud_prediction_log(sheet_row_payload)
 
@@ -394,18 +395,22 @@ elif app_view == "📊 Travel Data Analytics":
 
         st.write("")
 
-        kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
-        with kpi_col1:
+        # 🟢 GRID LAYOUT SPLIT RE-CONFIGURATION: Breaks metrics row into a 2x2 grid matrix layout to resolve squished strings
+        kpi_row1_col1, kpi_row1_col2 = st.columns(2)
+        with kpi_row1_col1:
             st.metric(label="🔢 Total Safety Reports Generated", value=f"{len(display_df):,}")
-        with kpi_col2:
+        with kpi_row1_col2:
             st.metric(label="🎚️ Historical Average Risk Score", value=f"{display_df['predicted_hazard_score'].mean():.1f} / 100")
-        with kpi_col3:
+            
+        st.write("")
+        kpi_row2_col1, kpi_row2_col2 = st.columns(2)
+        with kpi_row2_col1:
             st.metric(label="📈 Peak Risk Score Logged", value=f"{display_df['predicted_hazard_score'].max():.1f} / 100")
-        with kpi_col4:
+        with kpi_row2_col2:
             cat_col = 'risk_category' if 'risk_category' in display_df.columns else 'Safety Status Category'
             clean_modes = display_df[cat_col].apply(lambda x: str(x).replace("🟢","").replace("🟡","").replace("🔴","").replace("🍏","").strip())
             top_tier = clean_modes.mode()[0] if not clean_modes.empty else "None"
-            st.metric(label="🚨 Most Frequent Risk Category", value=f"{top_tier} Risk")
+            st.metric(label="🚨 Most Frequent Risk Category", value=f"{top_tier} Risk Range")
 
         st.write("")
         
