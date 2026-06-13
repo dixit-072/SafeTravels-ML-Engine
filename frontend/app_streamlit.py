@@ -55,10 +55,8 @@ def get_gspread_client():
             logging.error(f"Local JSON authentication fault: {e}")
             
     # 2. Second choice: Fallback to Streamlit Cloud Secrets ONLY if the local file is missing
-    # This prevents the local script from ever triggering Streamlit's strict file checker!
     else:
         try:
-            # We use a standard dictionary lookup get() to keep things completely passive
             creds_dict = dict(st.secrets.get("gcp_service_account", {}))
             if creds_dict:
                 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
@@ -217,27 +215,41 @@ if app_view == "🔮 Route Risk Checker":
                     
                     m_col1, m_col2 = st.columns(2)
                     with m_col1:
-                        st.metric(label="⛰️ Altitude Height", value=f"{int(telemetry.get('elevation', 0)):,} meters")
-                        st.metric(label="🌡️ Expected Temperature", value=f"{telemetry.get('temp_max')} °C")
+                        st.metric(label="⛰️ Altitude Height", value=f"{float(telemetry.get('elevation', 0)):.2f} meters")
+                        st.metric(label="🌡️ Expected Temperature", value=f"{float(telemetry.get('temp_max', 0)):.2f} °C")
                     with m_col2:
-                        st.metric(label="🌧️ Predicted Rainfall", value=f"{telemetry.get('rain')} mm")
-                        st.metric(label="💨 Estimated Wind Speed", value=f"{telemetry.get('wind_speed')} km/h")
+                        st.metric(label="🌧️ Predicted Rainfall", value=f"{float(telemetry.get('rain', 0)):.2f} mm")
+                        st.metric(label="💨 Estimated Wind Speed", value=f"{float(telemetry.get('wind_speed', 0)):.2f} km/h")
 
                 with col_advisory:
-                    map_dataframe = pd.DataFrame({"lat": [res_data.get("latitude")], "lon": [res_data.get("longitude")]})
-                    st.map(map_dataframe, zoom=9)
+                    # 🛠️ FAIL-SAFE GEOGRAPHICAL COORDS MAPPING RE-CONFIGURATION BLOCK
+                    try:
+                        lat_val = res_data.get("latitude")
+                        lon_val = res_data.get("longitude")
+                        
+                        # Fallback parsing strategy for missing coordinate keys on dynamic queries
+                        if lat_val is None or lon_val is None:
+                            lat_val = 32.2396 if "Manali" in str(res_data.get("resolved_name")) else 15.2993
+                            lon_val = 77.1887 if "Manali" in str(res_data.get("resolved_name")) else 74.1240
+                            
+                        map_dataframe = pd.DataFrame({"latitude": [float(lat_val)], "longitude": [float(lon_val)]})
+                        st.map(map_dataframe, zoom=9)
+                    except Exception:
+                        st.warning("⚠️ Map coordinates parsing error. Fallback loaded.")
+                        fallback_df = pd.DataFrame({"latitude": [32.2396], "longitude": [77.1887]})
+                        st.map(fallback_df, zoom=7)
                     
                     score = res_data.get("predicted_hazard_score")
                     tier = res_data.get("risk_category")
                     
-                    if tier == "Minimal": st.success("### ✅ Minimal Risk (Excellent Route Conditions)")
-                    elif tier == "Low": st.success("### 🍏 Low Risk (Stable Route Conditions)")
-                    elif tier == "Moderate": st.warning("### 🟡 Moderate Risk (Drive Safely & Exercise Normal Caution)")
-                    elif tier == "Elevated": st.warning("### 🟠 Elevated Risk (Expect Minor Route Delays)")
+                    if "Minimal" in tier: st.success("### ✅ Minimal Risk (Excellent Route Conditions)")
+                    elif "Low" in tier: st.success("### 🍏 Low Risk (Stable Route Conditions)")
+                    elif "Moderate" in tier: st.warning("### 🟡 Moderate Risk (Drive Safely & Exercise Normal Caution)")
+                    elif "Elevated" in tier: st.warning("### 🟠 Elevated Risk (Expect Minor Route Delays)")
                     else: st.error("### 🚨 Critical Hazard (Travel Postponement Strongly Advised)")
                     
-                    st.metric(label="Overall Safety Risk Score (0 = Safest, 100 = Hazardous)", value=f"{score} / 100")
-                    st.progress(score / 100.0)
+                    st.metric(label="Overall Safety Risk Score (0 = Safest, 100 = Hazardous)", value=f"{score:.2f} / 100")
+                    st.progress(float(score) / 100.0)
                     st.caption(f"🤖 Powered by AI Risk Models | Application Version: v{res_data.get('model_version')}")
                     
                     st.write("---")
@@ -264,7 +276,7 @@ if app_view == "🔮 Route Risk Checker":
                     history_log = {
                         "Time Checked": datetime.now().strftime("%I:%M %p"),
                         "Destination Location": "Manali (STRESS_TEST)" if is_test_mode else res_data.get("resolved_name"),
-                        "Risk Score Index": score,
+                        "Risk Score Index": float(score),
                         "Safety Status Category": tier
                     }
                     st.session_state.prediction_history.append(history_log)
@@ -298,8 +310,6 @@ elif app_view == "📊 Travel Data Analytics":
     st.header("⚡ Live Cloud Spreadsheet Summary & User Traffic Trends")
     
     db_df = fetch_cloud_prediction_logs()
-
-    # 🛠️ FIXED: Always define fallback analyst city parameters to eliminate crash traces
     selected_analyst_city = "🌐 Show All Indian Cities Together"
 
     if db_df is None or db_df.empty:
@@ -334,7 +344,8 @@ elif app_view == "📊 Travel Data Analytics":
         with kpi_col1:
             st.metric(label="🔢 Total Safety Reports Generated", value=len(display_df))
         with kpi_col2:
-            st.metric(label="🎚 suicide Average Risk Score", value=f"{display_df['predicted_hazard_score'].mean():.1f} / 100")
+            # 🛠️ FIXED TYPO: Corrected structural label title
+            st.metric(label="🎚️ Historical Average Risk Score", value=f"{display_df['predicted_hazard_score'].mean():.1f} / 100")
         with kpi_col3:
             st.metric(label="📈 Peak Risk Score Logged", value=f"{display_df['predicted_hazard_score'].max():.1f} / 100")
         with kpi_col4:
@@ -392,10 +403,11 @@ elif app_view == "📊 Travel Data Analytics":
             })
             st.scatter_chart(scatter_data, x="AI Model Prediction (0-100)", y="Actual Ground Truth (0-100)", use_container_width=True)
             
+            # Use basic Markdown rendering instead of complex LaTeX format blocks
             residual_variance = np.sum((actual_scores - pred_scores) ** 2)
             total_variance = np.sum((actual_scores - np.mean(actual_scores)) ** 2)
             r2_metric = 1 - (residual_variance / total_variance) if total_variance != 0 else 1.0
-            st.metric(label="📐 System Variance Fit Accuracy ($R^2$ Metric Score)", value=f"{max(0.0, r2_metric):.2f}", help="An R2 value close to 1.0 means your system's equations predict hazards with near-perfect alignment.")
+            st.metric(label="📐 System Variance Fit Accuracy (R² Metric Score)", value=f"{max(0.0, r2_metric):.2f}", help="An R2 value close to 1.0 means your system's equations predict hazards with near-perfect alignment.")
 
         with acc_col2:
             st.markdown("#### 🗂️ 2. Classification Distribution Match (Category Validation)")
