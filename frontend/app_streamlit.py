@@ -21,7 +21,6 @@ st.set_page_config(page_title="SafeTravels | Smart Route Planner", page_icon="�
 # =====================================================================
 # SYSTEM NETWORK ENDPOINT ROUTING VECTOR OVERRIDES
 # =====================================================================
-# Comment out or replace the os.getenv calls with your absolute live links:
 FASTAPI_URL = "https://safetravels-ml-engine.onrender.com/predict"
 HEALTH_URL = "https://safetravels-ml-engine.onrender.com/health"
 MAX_HISTORY = 20
@@ -46,15 +45,12 @@ def get_gspread_client():
     """Hybrid credential parser supporting local JSON keys or Streamlit Cloud Secrets Manager."""
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     
-    # 1. First choice: Check if running on local machine by verifying if your JSON file exists
     if os.path.exists(GOOGLE_CREDS_FILE):
         try:
             creds = Credentials.from_service_account_file(GOOGLE_CREDS_FILE, scopes=scopes)
             return gspread.authorize(creds)
         except Exception as e:
             logging.error(f"Local JSON authentication fault: {e}")
-            
-    # 2. Second choice: Fallback to Streamlit Cloud Secrets ONLY if the local file is missing
     else:
         try:
             creds_dict = dict(st.secrets.get("gcp_service_account", {}))
@@ -222,12 +218,10 @@ if app_view == "🔮 Route Risk Checker":
                         st.metric(label="💨 Estimated Wind Speed", value=f"{float(telemetry.get('wind_speed', 0)):.2f} km/h")
 
                 with col_advisory:
-                    # 🛠️ FAIL-SAFE GEOGRAPHICAL COORDS MAPPING RE-CONFIGURATION BLOCK
                     try:
                         lat_val = res_data.get("latitude")
                         lon_val = res_data.get("longitude")
                         
-                        # Fallback parsing strategy for missing coordinate keys on dynamic queries
                         if lat_val is None or lon_val is None:
                             lat_val = 32.2396 if "Manali" in str(res_data.get("resolved_name")) else 15.2993
                             lon_val = 77.1887 if "Manali" in str(res_data.get("resolved_name")) else 74.1240
@@ -311,17 +305,35 @@ elif app_view == "📊 Travel Data Analytics":
     
     db_df = fetch_cloud_prediction_logs()
     selected_analyst_city = "🌐 Show All Indian Cities Together"
+    attribution_backup_path = "analysis/risk_attribution_dashboard.csv"
 
+    # 🌊 BACKUP DISK HYDRATION STRATEGY: Hydrates full graphs if Google Sheets returns empty or sleeps
     if db_df is None or db_df.empty:
-        st.warning("⚠ Cloud database connection sleeping. Displaying your active browser session log metrics instead.")
-        if st.session_state.prediction_history:
-            db_df = pd.DataFrame(st.session_state.prediction_history).rename(
+        if os.path.exists(attribution_backup_path):
+            st.info("📊 Hydrating metrics suite using master repository logs archive...")
+            backup_raw = pd.read_csv(attribution_backup_path)
+            
+            # Re-map schemas to align validation parameters seamlessly
+            db_df = backup_raw.rename(
                 columns={
-                    "Destination Location": "resolved_name", 
-                    "Risk Score Index": "predicted_hazard_score", 
-                    "Safety Status Category": "risk_category"
+                    "location": "resolved_name", 
+                    "overall_hazard_score": "predicted_hazard_score"
                 }
             )
+            if "risk_category" not in db_df.columns:
+                db_df["risk_category"] = db_df["predicted_hazard_score"].apply(
+                    lambda s: "Low Risk 🟢" if s < 35 else ("Moderate Risk 🟡" if s < 65 else "High Hazard 🔴")
+                )
+        else:
+            st.warning("⚠ Cloud database connection sleeping. Displaying active session metrics instead.")
+            if st.session_state.prediction_history:
+                db_df = pd.DataFrame(st.session_state.prediction_history).rename(
+                    columns={
+                        "Destination Location": "resolved_name", 
+                        "Risk Score Index": "predicted_hazard_score", 
+                        "Safety Status Category": "risk_category"
+                    }
+                )
     
     if db_df is not None and not db_df.empty:
         loc_col_name = 'resolved_name' if 'resolved_name' in db_df.columns else 'Destination Location'
@@ -344,7 +356,6 @@ elif app_view == "📊 Travel Data Analytics":
         with kpi_col1:
             st.metric(label="🔢 Total Safety Reports Generated", value=len(display_df))
         with kpi_col2:
-            # 🛠️ FIXED TYPO: Corrected structural label title
             st.metric(label="🎚️ Historical Average Risk Score", value=f"{display_df['predicted_hazard_score'].mean():.1f} / 100")
         with kpi_col3:
             st.metric(label="📈 Peak Risk Score Logged", value=f"{display_df['predicted_hazard_score'].max():.1f} / 100")
@@ -403,7 +414,6 @@ elif app_view == "📊 Travel Data Analytics":
             })
             st.scatter_chart(scatter_data, x="AI Model Prediction (0-100)", y="Actual Ground Truth (0-100)", use_container_width=True)
             
-            # Use basic Markdown rendering instead of complex LaTeX format blocks
             residual_variance = np.sum((actual_scores - pred_scores) ** 2)
             total_variance = np.sum((actual_scores - np.mean(actual_scores)) ** 2)
             r2_metric = 1 - (residual_variance / total_variance) if total_variance != 0 else 1.0
@@ -439,7 +449,6 @@ elif app_view == "📊 Travel Data Analytics":
     st.caption("Analyzes typical long-term baseline hazard proportions mapped across the core 10 target holiday zones.")
 
     profile_path = "analysis/city_risk_share_profiles.csv"
-    attribution_path = "analysis/risk_attribution_dashboard.csv"
 
     if os.path.exists(profile_path):
         st.markdown("### 🗺️ Typical Risk Distribution Across Core Tourist Locations (%)")
