@@ -4,11 +4,11 @@ import pandas as pd
 import logging
 import os
 import numpy as np
+import gspread
 import json
-import base64
+from google.oauth2.service_account import Credentials
 from datetime import datetime
 from dotenv import load_dotenv
-from streamlit_gsheets import GSheetsConnection
 
 # Ingest configuration mappings from the hidden environment file
 load_dotenv()
@@ -26,6 +26,10 @@ FASTAPI_URL = "https://safetravels-ml-engine.onrender.com/predict"
 HEALTH_URL = "https://safetravels-ml-engine.onrender.com/health"
 MAX_HISTORY = 20
 
+# Pull spreadsheet parameters safely from secrets falling back to master strings
+SPREADSHEET_LINK = st.secrets.get("spreadsheet", "https://docs.google.com/spreadsheets/d/1KFiu3DzOSlDGEsh4vCYnfdUd6Po-0qL3CttLbe7wm1Q/edit")
+WORKSHEET_NAME = st.secrets.get("worksheet", "prediction_responses")
+
 if "prediction_history" not in st.session_state:
     st.session_state.prediction_history = []
 
@@ -36,51 +40,67 @@ st.sidebar.markdown("---")
 
 
 # =====================================================================
-# MODERN NATIVE GOOGLE SHEETS PIPELINE (VIDEO TUTORIAL METHOD)
+# ROCK-SOLID PROGRAMMATIC GOOGLE SHEETS PIPELINE (DIRECT gspread)
 # =====================================================================
 
-def get_sheets_connection():
-    """Initializes the official Streamlit native GSheets connection layer."""
+def get_gspread_client():
+    """Dynamically loads and sanitizes raw TOML attributes into a clean service account model."""
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     try:
-        return st.connection("gsheets", type=GSheetsConnection)
+        # Reconstruct the exact dictionary layout expected by the Google Auth engine
+        # Programmatically replacing escaped string characters handles encryption formatting bugs seamlessly
+        creds_dict = {
+            "type": "service_account",
+            "project_id": st.secrets.get("project_id", "safetravels-engine"),
+            "private_key_id": st.secrets.get("private_key_id", "fed64ac9c59d7a77b90119dfffcf7ed8ec066446"),
+            "private_key": st.secrets.get("private_key", "").replace("\\n", "\n").strip(),
+            "client_email": st.secrets.get("client_email", "logger@safetravels-engine.iam.gserviceaccount.com"),
+            "client_id": st.secrets.get("client_id", "105428089683554586068"),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/logger%40safetravels-engine.iam.gserviceaccount.com"
+        }
+        
+        if not creds_dict["private_key"]:
+            logging.error("🔐 Google Sheets Error: private_key attribute is missing or empty inside secrets!")
+            return None
+            
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        return gspread.authorize(creds)
     except Exception as e:
-        logging.error(f"🛑 Failed to initialize native GSheets connection: {e}")
+        logging.error(f"🛑 Google Credentials Initialization Failed: {e}")
         return None
 
+
 def fetch_cloud_prediction_logs():
-    """Fetches transactional logs from the cloud sheet using the video's custom caching tuning."""
-    conn = get_sheets_connection()
-    if not conn:
-        logging.warning("Database connection skipped: Connection parameters completely unavailable.")
+    """Fetches transactional logs from the cloud sheet directly via raw gspread blocks."""
+    client = get_gspread_client()
+    if not client:
+        logging.warning("Database connection skipped: Credentials completely unavailable.")
         return None
         
     try:
-        # Pull records using configurations defined in secrets
-        df = conn.read(
-            spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"],
-            worksheet=st.secrets["connections"]["gsheets"]["worksheet"],
-            ttl="5s"  # Configured to a fast 5-second Time-To-Live cache refresh like the video
-        )
-        if df is not None and not df.empty:
-            df = df.dropna(how="all")
-        return df
+        # Open by direct URL link string to guarantee a clean match across servers
+        sheet = client.open_by_url(SPREADSHEET_LINK).worksheet(WORKSHEET_NAME)
+        records = sheet.get_all_records()
+        if not records:
+            return pd.DataFrame()
+            
+        return pd.DataFrame(records)
     except Exception as e:
-        logging.warning(f"Database connection skipped: Native read validation failed: {e}")
+        logging.warning(f"Database connection skipped: Google Cloud Sync Failed: {e}")
         return None
 
 
 def write_cloud_prediction_log(row_data: list):
-    """Safely extracts indices from the submitted array list and appends to the cloud connection data frame."""
-    conn = get_sheets_connection()
-    if not conn:
+    """Safely pushes an array row down into your designated Google Sheet columns layout."""
+    client = get_gspread_client()
+    if not client:
         return False
     try:
-        # 1. Download current online logging state matrix
-        existing_df = fetch_cloud_prediction_logs()
-        if existing_df is None:
-            existing_df = pd.DataFrame()
-            
-        # ✅ CORRECT FIX: Parse by exact array list positional index numbers matching your button payload
+        sheet = client.open_by_url(SPREADSHEET_LINK).worksheet(WORKSHEET_NAME)
+        
         timestamp = row_data[0]
         location_query = row_data[1]
         resolved_name = row_data[2]
@@ -94,37 +114,30 @@ def write_cloud_prediction_log(row_data: list):
         forecast_date = row_data[10]
         processed_features_dict = row_data[11]
 
-        # 2. Build a matching row Pandas DataFrame using exact column headers
-        new_row_df = pd.DataFrame([{
-            "timestamp": str(timestamp),
-            "location_query": str(location_query),
-            "resolved_name": str(resolved_name),
-            "latitude": float(latitude or 0.0),
-            "longitude": float(longitude or 0.0),
-            "predicted_hazard_score": float(predicted_hazard_score or 0.0),
-            "risk_category": str(risk_category),
-            "destination_type": str(destination_type),
-            "destination_description": str(destination_description),
-            "model_version": str(model_version),
-            "forecast_date": str(forecast_date),
-            "processed_features": json.dumps(processed_features_dict) if isinstance(processed_features_dict, dict) else str(processed_features_dict),
-            "status": "SUCCESS"
-        }])
-
-        # 3. Append the new transaction using the video's concat approach
-        updated_df = pd.concat([existing_df, new_row_df], ignore_index=True)
-
-        # 4. Stream back to the cloud tracking sheet
-        conn.update(
-            spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"],
-            worksheet=st.secrets["connections"]["gsheets"]["worksheet"],
-            data=updated_df
-        )
+        # Explicitly match the 13 columns layout structure from A to M (including SUCCESS flag)
+        synchronized_payload = [
+            str(timestamp),
+            str(location_query),
+            str(resolved_name),
+            float(latitude or 0.0),
+            float(longitude or 0.0),
+            float(predicted_hazard_score or 0.0),
+            str(risk_category),
+            str(destination_type),
+            str(destination_description),
+            str(model_version),
+            str(forecast_date),
+            json.dumps(processed_features_dict) if isinstance(processed_features_dict, dict) else str(processed_features_dict),
+            "SUCCESS"
+        ]
+        
+        sheet.append_row(synchronized_payload)
         logging.info("✓ Live log row written successfully to Google Sheet matrix.")
         return True
     except Exception as e:
-        logging.error(f"🛑 Native GSheets rewrite stream transaction failed: {e}")
+        logging.error(f"🛑 Failed to append row log to Google Sheets: {e}")
         return False
+
 
 @st.cache_data
 def load_cached_destinations():
@@ -331,8 +344,7 @@ if app_view == "🔮 Route Risk Checker":
                         res_data.get("destination_description", "N/A"),
                         res_data.get("model_version", "2.1.0"),
                         target_date_str,
-                        telemetry,
-                        "SUCCESS"
+                        telemetry
                     ]
                     write_cloud_prediction_log(sheet_row_payload)
 
