@@ -31,7 +31,7 @@ MAX_HISTORY = 20
 # ============================================
 GOOGLE_CREDS_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "google_creds.json")
 
-# 🟢 BULLETPROOF CONFIGURATION: Pull directly from active saved st.secrets keys
+# Force the app to look directly at your verified Streamlit Secrets panel strings
 SPREADSHEET_NAME = st.secrets.get("SPREADSHEET_NAME", "SafeTravels_Cloud_Logs")
 WORKSHEET_NAME = st.secrets.get("GOOGLE_SHEET_TAB", "prediction_responses")
 
@@ -62,7 +62,7 @@ def get_gspread_client():
             # DIRECT FLAT TOML INGESTION: Collect variables straight from st.secrets
             private_key = st.secrets.get("GCP_PRIVATE_KEY")
             if private_key:
-                # Clean raw line breaks and normalize formatting configurations
+                # 🟢 THE CRYPTO FIX: Clean raw line breaks and normalize formatting configurations
                 cleaned_private_key = private_key.replace("\\n", "\n")
                 
                 creds_dict = {
