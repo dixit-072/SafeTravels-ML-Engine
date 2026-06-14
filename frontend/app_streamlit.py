@@ -4,10 +4,11 @@ import pandas as pd
 import logging
 import os
 import numpy as np
+import gspread
 import json
+from google.oauth2.service_account import Credentials
 from datetime import datetime
 from dotenv import load_dotenv
-from supabase import create_client, Client
 
 # Ingest configuration mappings from the hidden environment file
 load_dotenv()
@@ -26,10 +27,13 @@ HEALTH_URL = "https://safetravels-ml-engine.onrender.com/health"
 MAX_HISTORY = 20
 
 # ============================================
-# SUPABASE POSTGRESQL CONFIGURATION (CLOUD LAYER)
+# GOOGLE SHEETS CONFIGURATION (CLOUD LAYER)
 # ============================================
-SUPABASE_URL = st.secrets.get("SUPABASE_URL")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
+GOOGLE_CREDS_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "google_creds.json")
+
+# Force the app to look directly at your verified Streamlit Secrets panel strings
+SPREADSHEET_NAME = st.secrets.get("SPREADSHEET_NAME", "SafeTravels_Cloud_Logs")
+WORKSHEET_NAME = st.secrets.get("GOOGLE_SHEET_TAB", "prediction_responses")
 
 if "prediction_history" not in st.session_state:
     st.session_state.prediction_history = []
@@ -40,42 +44,51 @@ app_view = st.sidebar.radio("Switch Dashboard View:", ["🔮 Route Risk Checker"
 st.sidebar.markdown("---")
 
 
-def get_supabase_client() -> Client:
-    """Initializes and caches the PostgreSQL client connection pool."""
-    if SUPABASE_URL and SUPABASE_KEY:
+def get_gspread_client():
+    """Hybrid credential parser supporting local JSON keys or Streamlit Cloud Secrets Manager."""
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    
+    # 1. Check if we are running locally on your computer
+    if os.path.exists(GOOGLE_CREDS_FILE):
         try:
-            return create_client(SUPABASE_URL, SUPABASE_KEY)
+            creds = Credentials.from_service_account_file(GOOGLE_CREDS_FILE, scopes=scopes)
+            return gspread.authorize(creds)
         except Exception as e:
-            logging.error(f"Error initializing Supabase Connection: {e}")
+            logging.error(f"Local JSON Auth Error: {e}")
+            
+    # 2. If not local, we are live on Streamlit Cloud
+    
+            
     return None
 
 
 def fetch_cloud_prediction_logs():
-    """Fetches transactional logs from the cloud database to build live UI dashboard charts."""
-    supabase = get_supabase_client()
-    if not supabase:
+    """Fetches transactional logs from the cloud sheet to build live UI dashboard charts."""
+    client = get_gspread_client()
+    if not client:
         logging.warning("Database connection skipped: Credentials completely unavailable.")
         return None
         
     try:
-        response = supabase.table("prediction_logs").select("*").order("timestamp", desc=True).execute()
-        records = response.data
+        sheet = client.open(SPREADSHEET_NAME).worksheet(WORKSHEET_NAME)
+        records = sheet.get_all_records()
         if not records:
             return pd.DataFrame()
             
         return pd.DataFrame(records)
     except Exception as e:
-        logging.warning(f"Database connection skipped: SQL Query Fetch Failed: {e}")
+        logging.warning(f"Database connection skipped: Google Cloud Sync Failed: {e}")
         return None
 
 
 def write_cloud_prediction_log(row_data: list):
-    """Safely maps array rows to dictionary keys and pushes down into your live PostgreSQL table."""
-    supabase = get_supabase_client()
-    if not supabase:
+    """Safely pushes an array row down into your designated Google Sheet columns layout."""
+    client = get_gspread_client()
+    if not client:
         return False
     try:
-        # Deconstruct array values safely
+        sheet = client.open(SPREADSHEET_NAME).worksheet(WORKSHEET_NAME)
+        
         timestamp = row_data[0]
         location_query = row_data[1]
         resolved_name = row_data[2]
@@ -84,28 +97,33 @@ def write_cloud_prediction_log(row_data: list):
         predicted_hazard_score = row_data[5]
         risk_category = row_data[6]
         destination_type = row_data[7]
-        # index 8: destination_description is ignored to fit the clean PostgreSQL schema
+        destination_description = row_data[8]
         model_version = row_data[9]
         forecast_date = row_data[10]
+        processed_features_dict = row_data[11]
 
-        # Explicitly map indices into structured SQL Column payloads
-        synchronized_payload = {
-            "location_query": str(location_query),
-            "resolved_name": str(resolved_name),
-            "latitude": float(latitude or 0.0),
-            "longitude": float(longitude or 0.0),
-            "predicted_hazard_score": float(predicted_hazard_score or 0.0),
-            "risk_category": str(risk_category),
-            "destination_type": str(destination_type),
-            "model_version": str(model_version),
-            "forecast_date": str(forecast_date)
-        }
+        # Explicitly match the 13 columns from A to M (including SUCCESS flag)
+        synchronized_payload = [
+            str(timestamp),
+            str(location_query),
+            str(resolved_name),
+            float(latitude or 0.0),
+            float(longitude or 0.0),
+            float(predicted_hazard_score or 0.0),
+            str(risk_category),
+            str(destination_type),
+            str(destination_description),
+            str(model_version),
+            str(forecast_date),
+            json.dumps(processed_features_dict) if isinstance(processed_features_dict, dict) else str(processed_features_dict),
+            "SUCCESS"
+        ]
         
-        supabase.table("prediction_logs").insert(synchronized_payload).execute()
-        logging.info("✓ Live log row written successfully to Supabase PostgreSQL matrix.")
+        sheet.append_row(synchronized_payload)
+        logging.info("✓ Live log row written successfully to Google Sheet matrix.")
         return True
     except Exception as e:
-        logging.error(f"🛑 Failed to push row data into PostgreSQL: {e}")
+        logging.error(f"🛑 Failed to append row log to Google Sheets: {e}")
         return False
 
 
@@ -163,7 +181,7 @@ if app_view == "🔮 Route Risk Checker":
             st.sidebar.error("🔴 System Offline")
         st.sidebar.info("✨ Live Mode Active: Fetching real-time weather and satellite tracking inputs for your trip.")
 
-        trigger_inference = st.button("Check Route Safety Profile", use_container_width=True)
+        trigger_inference = st.button("Check Route Safety Profile", width="stretch")
 
     if trigger_inference:
         if not BACKEND_ONLINE:
@@ -334,7 +352,7 @@ if app_view == "🔮 Route Risk Checker":
     st.header("🕒 Recent Checks This Session")
     if st.session_state.prediction_history:
         hist_df = pd.DataFrame(st.session_state.prediction_history)
-        st.dataframe(hist_df.sort_index(ascending=False), use_container_width=True)
+        st.dataframe(hist_df.sort_index(ascending=False), width="stretch")
     else:
         st.info("ℹ️ No routes checked yet this session. Enter a destination above to see your recent search log history.")
 
@@ -466,7 +484,7 @@ elif app_view == "📊 Travel Data Analytics":
                 "AI Prediction Path": pred_scores[-40:],
                 "Verified Ground Truth": actual_scores[-40:]
             })
-            st.line_chart(comparison_line_df, use_container_width=True)
+            st.line_chart(comparison_line_df, width="stretch")
             
             residual_variance = np.sum((actual_scores - pred_scores) ** 2)
             total_variance = np.sum((actual_scores - np.mean(actual_scores)) ** 2)
@@ -483,7 +501,7 @@ elif app_view == "📊 Travel Data Analytics":
                 "Actual Confirmed Counts": [actual_categories_cleaned.count("Low"), actual_categories_cleaned.count("Moderate"), actual_categories_cleaned.count("High")]
             }
             matrix_df = pd.DataFrame(matrix_records)
-            st.dataframe(matrix_df, use_container_width=True, hide_index=True)
+            st.dataframe(matrix_df, width="stretch", hide_index=True)
 
             matches = sum(1 for p, a in zip(pred_categories, actual_categories_cleaned) if p == a)
             accuracy_percentage = max(72.4, (matches / total_records) * 100 if total_records > 0 else 88.5)
@@ -493,7 +511,7 @@ elif app_view == "📊 Travel Data Analytics":
         st.markdown(f"#### 💾 Complete System Activity Logs (Filtered: {selected_analyst_city})")
         if 'cleaned_city_match' in display_df.columns:
             display_df = display_df.drop(columns=['cleaned_city_match'])
-        st.dataframe(display_df, use_container_width=True)
+        st.dataframe(display_df, width="stretch")
     else:
         st.info("ℹ No safety searches logged yet. Run a few route checks inside the 'Route Risk Checker' menu to view trend graphs.")
 
@@ -506,7 +524,7 @@ elif app_view == "📊 Travel Data Analytics":
     if os.path.exists(profile_path):
         st.markdown("### 🗺️ Typical Risk Distribution Across Core Tourist Locations (%)")
         profiles_df = pd.read_csv(profile_path)
-        st.dataframe(profiles_df, use_container_width=True)
+        st.dataframe(profiles_df, width="stretch")
 
         st.markdown("#### Visual Risk Category Distribution Comparison Graph")
         st.bar_chart(profiles_df.set_index("Location"))
@@ -550,7 +568,7 @@ elif app_view == "📊 Travel Data Analytics":
         s_col1, s_col2 = st.columns([2, 3], gap="medium")
         with s_col1:
             st.markdown(f"#### 📊 Seasonal Breakdown Matrix ({selected_analyst_city})")
-            st.dataframe(seasonal_df, use_container_width=True, hide_index=True)
+            st.dataframe(seasonal_df, width="stretch", hide_index=True)
             if selected_analyst_city == "🌐 Show All Indian Cities Together":
                 st.info("💡 **General Insight:** Showing regional historical averages computed across all available destinations.")
             else:
@@ -558,7 +576,7 @@ elif app_view == "📊 Travel Data Analytics":
             
         with s_col2:
             st.markdown("#### 📈 How Seasonal Hazards Change Across Factors")
-            st.bar_chart(seasonal_df.set_index("Holiday Season Window"), horizontal=True, use_container_width=True)
+            st.bar_chart(seasonal_df.set_index("Holiday Season Window"), horizontal=True, width="stretch")
             
     except Exception as e:
         st.error(f"⚠️ Failed to calculate dynamic seasonal trends: {e}")
@@ -576,7 +594,7 @@ elif app_view == "📊 Travel Data Analytics":
         else:
             filtered_df = attr_df
 
-        st.dataframe(filtered_df.head(100), use_container_width=True)
+        st.dataframe(filtered_df.head(100), width="stretch")
         st.markdown("#### Baseline Summary Distribution Statistics (Overall Score Dispersion)")
         st.dataframe(filtered_df["overall_hazard_score"].describe().to_frame().T)
     else:
