@@ -40,9 +40,9 @@ st.sidebar.markdown("---")
 # =====================================================================
 
 def get_sheets_connection():
-    """Initializes the modern Streamlit GSheets native connection abstraction layer."""
+    """Initializes the modern Streamlit GSheets native connection layer directly matching the secrets block."""
     try:
-        # Automatically connects using the structured [connections.gsheets] settings block
+        # This completely delegates auth matching directly to the library internals
         return st.connection("gsheets", type=GSheetsConnection)
     except Exception as e:
         logging.error(f"🛑 Failed to initialize native GSheets connection: {e}")
