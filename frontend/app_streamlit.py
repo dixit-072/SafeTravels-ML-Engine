@@ -36,12 +36,13 @@ st.sidebar.markdown("---")
 
 
 # =====================================================================
-# MODERN GOOGLE SHEETS CONNECTION PIPELINE (VIDEO TUTORIAL METHOD)
+# MODERN NATIVE GOOGLE SHEETS PIPELINE (VIDEO TUTORIAL METHOD)
 # =====================================================================
 
 def get_sheets_connection():
-    """Initializes the modern Streamlit GSheets native connection abstraction."""
+    """Initializes the modern Streamlit GSheets native connection abstraction layer."""
     try:
+        # Automatically connects using the structured [connections.gsheets] settings block
         return st.connection("gsheets", type=GSheetsConnection)
     except Exception as e:
         logging.error(f"🛑 Failed to initialize native GSheets connection: {e}")
@@ -49,66 +50,82 @@ def get_sheets_connection():
 
 
 def fetch_cloud_prediction_logs():
-    """Fetches records using the native read() engine with a short 5-second TTL cache fallback."""
+    """Fetches transactional logs from the cloud sheet using the video's custom caching tuning."""
     conn = get_sheets_connection()
     if not conn:
-        logging.warning("Database connection skipped: Connection layout completely unavailable.")
+        logging.warning("Database connection skipped: Connection parameters completely unavailable.")
         return None
+        
     try:
+        # Pull records using configurations defined in secrets
         df = conn.read(
             spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"],
             worksheet=st.secrets["connections"]["gsheets"]["worksheet"],
-            ttl="5s"  # Short cache time-to-live matching the video's custom tuning
+            ttl="5s"  # Configured to a fast 5-second Time-To-Live cache refresh like the video
         )
         if df is not None and not df.empty:
             df = df.dropna(how="all")
         return df
     except Exception as e:
-        logging.warning(f"Database connection skipped: Native read operation failed: {e}")
+        logging.warning(f"Database connection skipped: Native read validation failed: {e}")
         return None
 
 
 def write_cloud_prediction_log(row_data: list):
-    """Fetches the active table, appends the fresh row payload, and pushes the updated frame live."""
+    """Fetches active data, appends the fresh row array cleanly, and runs a native update frame rewrite."""
     conn = get_sheets_connection()
     if not conn:
         return False
     try:
-        # 1. Pull down the current active spreadsheet data matrix
+        # 1. Download current online logging state matrix
         existing_df = fetch_cloud_prediction_logs()
         if existing_df is None:
             existing_df = pd.DataFrame()
+            
+        # Deconstruct row array fields
+        timestamp = row_data[0]
+        location_query = row_data[1]
+        resolved_name = row_data[2]
+        latitude = row_data[3]
+        longitude = row_data[4]
+        predicted_hazard_score = row_data[5]
+        risk_category = row_data[6]
+        destination_type = row_data[7]
+        destination_description = row_data[8]
+        model_version = row_data[9]
+        forecast_date = row_data[10]
+        processed_features_dict = row_data[11]
 
-        # 2. Re-map the raw trip array parameters to match your tabular schema keys perfectly
+        # 2. Build a matching row Pandas DataFrame using exact column headers
         new_row_df = pd.DataFrame([{
-            "timestamp": str(row_data[0]),
-            "location_query": str(row_data[1]),
-            "resolved_name": str(row_data[2]),
-            "latitude": float(row_data[3] or 0.0),
-            "longitude": float(row_data[4] or 0.0),
-            "predicted_hazard_score": float(row_data[5] or 0.0),
-            "risk_category": str(row_data[6]),
-            "destination_type": str(row_data[7]),
-            "destination_description": str(row_data[8]),
-            "model_version": str(row_data[9]),
-            "forecast_date": str(row_data[10]),
-            "processed_features": json.dumps(row_data[11]) if isinstance(row_data[11], dict) else str(row_data[11]),
+            "timestamp": str(timestamp),
+            "location_query": str(location_query),
+            "resolved_name": str(resolved_name),
+            "latitude": float(latitude or 0.0),
+            "longitude": float(longitude or 0.0),
+            "predicted_hazard_score": float(predicted_hazard_score or 0.0),
+            "risk_category": str(risk_category),
+            "destination_type": str(destination_type),
+            "destination_description": str(destination_description),
+            "model_version": str(model_version),
+            "forecast_date": str(forecast_date),
+            "processed_features": json.dumps(processed_features_dict) if isinstance(processed_features_dict, dict) else str(processed_features_dict),
             "status": "SUCCESS"
         }])
 
-        # 3. Concatenate the frames together matching the video's stacking logic
+        # 3. Append the new transaction using the video's concat approach
         updated_df = pd.concat([existing_df, new_row_df], ignore_index=True)
 
-        # 4. Fire the complete frame rewrite operation back down to the target cloud sheet grid
+        # 4. Stream back to the cloud tracking sheet
         conn.update(
             spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"],
             worksheet=st.secrets["connections"]["gsheets"]["worksheet"],
             data=updated_df
         )
-        logging.info("✓ Live log row written successfully via native GSheets connection matrix.")
+        logging.info("✓ Live log row written successfully to Google Sheet matrix.")
         return True
     except Exception as e:
-        logging.error(f"🛑 Native GSheets update operation failed: {e}")
+        logging.error(f"🛑 Native GSheets rewrite stream transaction failed: {e}")
         return False
 
 
