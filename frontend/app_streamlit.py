@@ -30,6 +30,8 @@ MAX_HISTORY = 20
 # GOOGLE SHEETS CONFIGURATION (CLOUD LAYER)
 # ============================================
 GOOGLE_CREDS_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "google_creds.json")
+
+# 🟢 BULLETPROOF CONFIGURATION: Pull directly from active saved st.secrets keys
 SPREADSHEET_NAME = st.secrets.get("SPREADSHEET_NAME", "SafeTravels_Cloud_Logs")
 WORKSHEET_NAME = st.secrets.get("GOOGLE_SHEET_TAB", "prediction_responses")
 
@@ -57,10 +59,10 @@ def get_gspread_client():
     # 2. If not local, we are live on Streamlit Cloud
     else:
         try:
-            # DIRECT FLAT TOML INGESTION: Collect parameters from st.secrets
+            # DIRECT FLAT TOML INGESTION: Collect variables straight from st.secrets
             private_key = st.secrets.get("GCP_PRIVATE_KEY")
             if private_key:
-                # 🟢 THE CRYPTO FIX: Clean up hidden raw line breaks and normalize format
+                # Clean raw line breaks and normalize formatting configurations
                 cleaned_private_key = private_key.replace("\\n", "\n")
                 
                 creds_dict = {
@@ -111,7 +113,6 @@ def write_cloud_prediction_log(row_data: list):
     try:
         sheet = client.open(SPREADSHEET_NAME).worksheet(WORKSHEET_NAME)
         
-        # Unpack the frontend list and map it to your exact 13 columns matching your store.py model
         timestamp = row_data[0]
         location_query = row_data[1]
         resolved_name = row_data[2]
@@ -343,7 +344,6 @@ if app_view == "🔮 Route Risk Checker":
                     target_date_str = travel_date.strftime("%Y-%m-%d")
                     current_time_str = datetime.now().strftime("%I:%M:%S %p")
                     
-                    # HARMONIZED PAYLOAD: Matches columns A through M perfectly
                     sheet_row_payload = [
                         current_timestamp,
                         final_query,
@@ -402,7 +402,6 @@ elif app_view == "📊 Travel Data Analytics":
     selected_analyst_city = "🌐 Show All Indian Cities Together"
     attribution_backup_path = "analysis/risk_attribution_dashboard.csv"
 
-    # Fallback to local logs directory if cloud sheet connection is processing
     if db_df is None or db_df.empty:
         if os.path.exists(attribution_backup_path):
             st.info("📊 Hydrating metrics suite using master repository logs archive...")
