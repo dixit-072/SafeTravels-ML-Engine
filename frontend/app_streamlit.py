@@ -45,10 +45,10 @@ st.sidebar.markdown("---")
 
 
 def get_gspread_client():
-    """Hybrid credential parser supporting local JSON keys or Streamlit Cloud Secrets Manager."""
+    """Decodes single flat Base64 secrets string seamlessly with a cache-busting fallback."""
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     
-    # 1. Check if we are running locally on your computer
+    # 1. Check if running locally
     if os.path.exists(GOOGLE_CREDS_FILE):
         try:
             creds = Credentials.from_service_account_file(GOOGLE_CREDS_FILE, scopes=scopes)
@@ -56,11 +56,25 @@ def get_gspread_client():
         except Exception as e:
             logging.error(f"Local JSON Auth Error: {e}")
             
-    # 2. If not local, we are live on Streamlit Cloud
-    
+    # 2. Live on Streamlit Cloud - Force-read using a fresh variable mapping
+    else:
+        try:
+            # Check the new V2 variable first to completely bypass Streamlit's cache
+            base64_creds = st.secrets.get("GCP_CREDS_BASE64_V2") or st.secrets.get("GCP_CREDS_BASE64")
+            
+            if base64_creds:
+                # Unscramble the single-line string back into original JSON format
+                decoded_json_bytes = base64.b64decode(base64_creds)
+                creds_dict = json.loads(decoded_json_bytes)
+                
+                creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+                return gspread.authorize(creds)
+            else:
+                logging.error("🔐 Streamlit Secrets Error: Both Base64 key variants returned None!")
+        except Exception as e:
+            logging.error(f"Streamlit Cloud Secrets Auth Error: {e}")
             
     return None
-
 
 def fetch_cloud_prediction_logs():
     """Fetches transactional logs from the cloud sheet to build live UI dashboard charts."""
