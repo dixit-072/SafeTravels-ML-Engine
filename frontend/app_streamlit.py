@@ -6,6 +6,7 @@ import os
 import numpy as np
 import gspread
 import json
+import base64
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 from dotenv import load_dotenv
