@@ -40,30 +40,8 @@ st.sidebar.markdown("---")
 # =====================================================================
 
 def get_sheets_connection():
-    """Initializes the connection and programmatically auto-cleans explicit PEM padding issues."""
+    """Initializes the standard Streamlit GSheets native connection abstraction."""
     try:
-        # 1. Pull down raw string data safely
-        gsheets_secrets = st.secrets.get("connections", {}).get("gsheets", {})
-        raw_key = gsheets_secrets.get("private_key", "")
-        
-        # 2. Automated Regex-style Cryptography Sanitizer
-        if raw_key and isinstance(raw_key, str):
-            # Strip accidental outer double quotes or white spaces added by clipboard transfers
-            cleaned_key = raw_key.strip().strip('"').strip("'")
-            
-            # Reconstruct clean, standard UNIX inline breaks explicitly
-            cleaned_key = cleaned_key.replace("\\n", "\n")
-            cleaned_key = cleaned_key.replace("\n\n", "\n")
-            
-            # Ensure the strict RSA block encapsulations are mathematically complete
-            if "-----BEGIN PRIVATE KEY-----" not in cleaned_key:
-                cleaned_key = f"-----BEGIN PRIVATE KEY-----\n{cleaned_key}"
-            if "-----END PRIVATE KEY-----" not in cleaned_key:
-                cleaned_key = f"{cleaned_key}\n-----END PRIVATE KEY-----"
-                
-            # Safely re-inject the sanitized sequence back into Streamlit's operational memory
-            st.secrets["connections"]["gsheets"]["private_key"] = cleaned_key.strip()
-            
         return st.connection("gsheets", type=GSheetsConnection)
     except Exception as e:
         logging.error(f"🛑 Failed to initialize native GSheets connection: {e}")
