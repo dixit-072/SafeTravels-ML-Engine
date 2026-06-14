@@ -40,53 +40,12 @@ st.sidebar.markdown("---")
 # =====================================================================
 
 def get_sheets_connection():
-    """Initializes GSheets native connection layer by programmatically generating a clean JSON dictionary pool."""
+    """Initializes the official Streamlit native GSheets connection layer."""
     try:
-        # Check if the connection has already been successfully mounted to operational memory
-        if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
-            # If the platform configuration handles it natively, pass it right through
-            if "private_key" in st.secrets["connections"]["gsheets"] and "\n" in st.secrets["connections"]["gsheets"]["private_key"]:
-                return st.connection("gsheets", type=GSheetsConnection)
-
-        # 🚀 THE BULLETPROOF FIX: Programmatically construct the exact configuration layout dictionary structure
-        # This bypasses the TOML parsing engine and maps keys directly to the service account factory
-        service_account_info = {
-            "type": st.secrets.get("GCP_TYPE", "service_account"),
-            "project_id": st.secrets.get("GCP_PROJECT_ID", "safetravels-engine"),
-            "private_key_id": st.secrets.get("GCP_PRIVATE_KEY_ID", "fed64ac9c59d7a77b90119dfffcf7ed8ec066446"),
-            "private_key": st.secrets.get("GCP_PRIVATE_KEY", "").replace("\\n", "\n"),
-            "client_email": st.secrets.get("GCP_CLIENT_EMAIL", "logger@safetravels-engine.iam.gserviceaccount.com"),
-            "client_id": st.secrets.get("GCP_CLIENT_ID", "105428089683554586068"),
-            "auth_uri": st.secrets.get("GCP_AUTH_URI", "https://accounts.google.com/o/oauth2/auth"),
-            "token_uri": st.secrets.get("GCP_TOKEN_URI", "https://oauth2.googleapis.com/token"),
-            "auth_provider_x509_cert_url": st.secrets.get("GCP_AUTH_PROVIDER_X509_CERT_URL", "https://www.googleapis.com/oauth2/v1/certs"),
-            "client_x509_cert_url": st.secrets.get("GCP_CLIENT_X509_CERT_URL", "https://www.googleapis.com/robot/v1/metadata/x509/logger%40safetravels-engine.iam.gserviceaccount.com"),
-            "universe_domain": st.secrets.get("GCP_UNIVERSE_DOMAIN", "googleapis.com")
-        }
-
-        # Seamlessly inject our dictionary right into the operational backend structure expected by st-gsheets-connection
-        st.secrets["connections"] = {
-            "gsheets": {
-                "spreadsheet": st.secrets.get("SPREADSHEET_NAME", "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit"),
-                "worksheet": st.secrets.get("GOOGLE_SHEET_TAB", "prediction_responses"),
-                "type": service_account_info["type"],
-                "project_id": service_account_info["project_id"],
-                "private_key_id": service_account_info["private_key_id"],
-                "private_key": service_account_info["private_key"],
-                "client_email": service_account_info["client_email"],
-                "client_id": service_account_info["client_id"],
-                "auth_uri": service_account_info["auth_uri"],
-                "token_uri": service_account_info["token_uri"],
-                "auth_provider_x509_cert_url": service_account_info["auth_provider_x509_cert_url"],
-                "client_x509_cert_url": service_account_info["client_x509_cert_url"]
-            }
-        }
-        
         return st.connection("gsheets", type=GSheetsConnection)
     except Exception as e:
         logging.error(f"🛑 Failed to initialize native GSheets connection: {e}")
         return None
-
 
 def fetch_cloud_prediction_logs():
     """Fetches transactional logs from the cloud sheet using the video's custom caching tuning."""
