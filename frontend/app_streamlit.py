@@ -30,8 +30,8 @@ MAX_HISTORY = 20
 # GOOGLE SHEETS CONFIGURATION (CLOUD LAYER)
 # ============================================
 GOOGLE_CREDS_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "google_creds.json")
-SPREADSHEET_NAME = st.secrets.get("SPREADSHEET_NAME", os.getenv("GOOGLE_SHEET_NAME", "SafeTravels_Cloud_Logs"))
-WORKSHEET_NAME = st.secrets.get("GOOGLE_SHEET_TAB", os.getenv("GOOGLE_SHEET_TAB", "prediction_responses"))
+SPREADSHEET_NAME = st.secrets.get("SPREADSHEET_NAME", "SafeTravels_Cloud_Logs")
+WORKSHEET_NAME = st.secrets.get("GOOGLE_SHEET_TAB", "prediction_responses")
 
 if "prediction_history" not in st.session_state:
     st.session_state.prediction_history = []
