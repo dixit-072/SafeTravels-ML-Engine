@@ -45,7 +45,7 @@ st.sidebar.markdown("---")
 # =====================================================================
 
 def get_gspread_client():
-    """Decodes a flat Base64 string directly in memory to completely bypass TOML escape bugs."""
+    """Decodes a flat Base64 string directly in memory, programmatically clearing hidden characters."""
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     try:
         # Pull down the solid base64 block from secrets
@@ -55,8 +55,12 @@ def get_gspread_client():
             logging.error("🔐 Google Sheets Error: GCP_CREDS_BASE64_FINAL missing from secrets!")
             return None
             
-        # Decode the string natively back into standard JSON format
-        decoded_bytes = base64.b64decode(base64_payload)
+        # 🚀 SELF-CLEANING BOOSTER: Strip out quotes, spaces, hidden line-breaks, or carriage returns completely
+        clean_payload = str(base64_payload).strip().strip('"').strip("'")
+        clean_payload = clean_payload.replace("\n", "").replace("\r", "").replace(" ", "")
+        
+        # Natively decode back into standard service account dictionary
+        decoded_bytes = base64.b64decode(clean_payload)
         creds_dict = json.loads(decoded_bytes)
         
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
