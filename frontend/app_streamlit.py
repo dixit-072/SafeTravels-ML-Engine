@@ -44,38 +44,25 @@ st.sidebar.markdown("---")
 # =====================================================================
 
 def get_gspread_client():
-    """Initializes a direct gspread connection layer by programmatically formatting text fields."""
+    """Initializes a direct gspread connection layer by cleanly converting raw JSON string data."""
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     try:
-        raw_private_key = st.secrets.get("private_key", "")
+        # 🚀 THE DEFINITIVE FIX: Read the entire service account layout directly as a raw JSON dictionary payload block
+        # This completely stops Streamlit's string parser from escaping characters incorrectly
+        raw_json_str = st.secrets.get("GCP_SERVICE_ACCOUNT_JSON", "")
         
-        if not raw_private_key:
-            logging.error("🔐 Google Sheets Error: 'private_key' attribute is missing or empty inside secrets!")
+        if not raw_json_str:
+            logging.error("🔐 Google Sheets Error: GCP_SERVICE_ACCOUNT_JSON parameter is missing or empty!")
             return None
             
-        # Programmatically sanitize hidden carriage returns and escape sequence errors
-        cleaned_key = str(raw_private_key).strip().strip('"').strip("'")
-        cleaned_key = cleaned_key.replace("\\n", "\n")
-        
-        creds_dict = {
-            "type": "service_account",
-            "project_id": st.secrets.get("project_id", "safetravels-engine"),
-            "private_key_id": st.secrets.get("private_key_id", "fed64ac9c59d7a77b90119dfffcf7ed8ec066446"),
-            "private_key": cleaned_key,
-            "client_email": st.secrets.get("client_email", "logger@safetravels-engine.iam.gserviceaccount.com"),
-            "client_id": st.secrets.get("client_id", "105428089683554586068"),
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/logger%40safetravels-engine.iam.gserviceaccount.com"
-        }
+        # Parse the valid string directly into standard operational dictionary keys
+        creds_dict = json.loads(raw_json_str)
         
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         return gspread.authorize(creds)
     except Exception as e:
         logging.error(f"🛑 Google Credentials Initialization Failed: {e}")
         return None
-
 
 def fetch_cloud_prediction_logs():
     """Fetches transactional logs from the cloud sheet directly via raw gspread blocks."""
