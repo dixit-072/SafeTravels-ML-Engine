@@ -72,7 +72,7 @@ def fetch_cloud_prediction_logs():
 
 
 def write_cloud_prediction_log(row_data: list):
-    """Fetches active data, appends the fresh row array cleanly, and runs a native update frame rewrite."""
+    """Safely extracts indices from the submitted array list and appends to the cloud connection data frame."""
     conn = get_sheets_connection()
     if not conn:
         return False
@@ -82,7 +82,7 @@ def write_cloud_prediction_log(row_data: list):
         if existing_df is None:
             existing_df = pd.DataFrame()
             
-        # Deconstruct row array fields
+        # ✅ CORRECT FIX: Parse by exact array list positional index numbers matching your button payload
         timestamp = row_data[0]
         location_query = row_data[1]
         resolved_name = row_data[2]
@@ -127,7 +127,6 @@ def write_cloud_prediction_log(row_data: list):
     except Exception as e:
         logging.error(f"🛑 Native GSheets rewrite stream transaction failed: {e}")
         return False
-
 
 @st.cache_data
 def load_cached_destinations():
