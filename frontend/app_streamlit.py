@@ -6,6 +6,7 @@ import os
 import numpy as np
 import gspread
 import json
+import base64
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 from dotenv import load_dotenv
@@ -40,32 +41,24 @@ st.sidebar.markdown("---")
 
 
 # =====================================================================
-# ROCK-SOLID PROGRAMMATIC GOOGLE SHEETS PIPELINE (DIRECT gspread)
+# ROCK-SOLID PROGRAMMATIC GOOGLE SHEETS PIPELINE (DIRECT gspread + BASE64)
 # =====================================================================
 
 def get_gspread_client():
-    """Dynamically loads and sanitizes raw TOML attributes into a clean service account model."""
+    """Decodes a flat Base64 string directly in memory to completely bypass TOML escape bugs."""
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     try:
-        # Reconstruct the exact dictionary layout expected by the Google Auth engine
-        # Programmatically replacing escaped string characters handles encryption formatting bugs seamlessly
-        creds_dict = {
-            "type": "service_account",
-            "project_id": st.secrets.get("project_id", "safetravels-engine"),
-            "private_key_id": st.secrets.get("private_key_id", "fed64ac9c59d7a77b90119dfffcf7ed8ec066446"),
-            "private_key": st.secrets.get("private_key", "").replace("\\n", "\n").strip(),
-            "client_email": st.secrets.get("client_email", "logger@safetravels-engine.iam.gserviceaccount.com"),
-            "client_id": st.secrets.get("client_id", "105428089683554586068"),
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/logger%40safetravels-engine.iam.gserviceaccount.com"
-        }
+        # Pull down the solid base64 block from secrets
+        base64_payload = st.secrets.get("GCP_CREDS_BASE64_FINAL", "")
         
-        if not creds_dict["private_key"]:
-            logging.error("🔐 Google Sheets Error: private_key attribute is missing or empty inside secrets!")
+        if not base64_payload:
+            logging.error("🔐 Google Sheets Error: GCP_CREDS_BASE64_FINAL missing from secrets!")
             return None
             
+        # Decode the string natively back into standard JSON format
+        decoded_bytes = base64.b64decode(base64_payload)
+        creds_dict = json.loads(decoded_bytes)
+        
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         return gspread.authorize(creds)
     except Exception as e:
