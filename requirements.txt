@@ -13,3 +13,4 @@ xgboost
 pytest
 gspread
 google-auth
+requests
